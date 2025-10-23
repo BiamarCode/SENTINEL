@@ -471,26 +471,29 @@ def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str]
     normalized_count = 0
     for line in raw_lines:
         c = only_digits(line)
+        original_line_is_invalid = True
 
-        is_short = 1 <= len(c) < 14
-        was_normalized = False
-
-        if is_short:
+        # Tenta normalizar se for curto
+        if 1 <= len(c) < 14:
             c_filled = c.zfill(14)
             if validate_cnpj_digits(c_filled):
                 c = c_filled
-                was_normalized = True
+                # Se normalizado com sucesso, a linha original é válida
+                original_line_is_invalid = False
 
-        if c not in seen and validate_cnpj_digits(c):
-            seen.add(c)
-            cnpjs.append(c)
-            if was_normalized:
-                normalized_count += 1
-        else:
-            # Garante que a linha original seja adicionada aos inválidos
-            # se a versão normalizada falhar ou se já for inválida.
-            if line not in invalids:
-                 invalids.append(line)
+        # Valida a versão (potencialmente normalizada)
+        if validate_cnpj_digits(c):
+            if c not in seen:
+                seen.add(c)
+                cnpjs.append(c)
+                # Conta como normalizado apenas se a versão curta foi a primeira a ser vista
+                if len(only_digits(line)) < 14:
+                    normalized_count += 1
+            # Se a linha era válida (diretamente ou após normalização), não a marcamos como inválida
+            original_line_is_invalid = False
+
+        if original_line_is_invalid and line not in invalids:
+            invalids.append(line)
     return cnpjs, invalids, normalized_count
 
 
