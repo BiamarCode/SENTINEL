@@ -257,7 +257,7 @@ def safe_request(
     timeout: float,
     *,
     max_retries: int = 3,
-    backoff: float = 1.5,
+    backoff: float = 2.5,
 ) -> Tuple[int, Optional[Dict[str, Any]], Optional[str]]:
     """Realiza uma requisição HTTP com tratamento de erros e retentativas.
 
@@ -619,8 +619,8 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> Tuple[RunConfig, ApiConf
                    help="TXT apenas com CNPJs baixados (default: baixados_na_receita.txt)")
     p.add_argument("--relatorio-out", default="relatorio.csv",
                    help="CSV com cnpj,status,codigo_situacao,descricao_situacao,raw_status,http_status,error (default: relatorio.csv)")
-    p.add_argument("--rate", type=float, default=float(os.getenv("API_RATE_PER_SEC", "1.5")),
-                   help="Requisições por segundo (default: 1.5)")
+    p.add_argument("--rate", type=float, default=float(os.getenv("API_RATE_PER_SEC", "0.5")),
+                   help="Requisições por segundo (default: 0.5)")
     p.add_argument("--timeout", type=float, default=float(os.getenv("API_TIMEOUT_SEC", "20")),
                    help="Timeout por request em segundos (default: 20)")
     p.add_argument("--log-level", default="INFO", help="Nível de log (DEBUG, INFO, WARNING, ERROR).")
