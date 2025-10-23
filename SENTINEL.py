@@ -39,10 +39,26 @@ PROGRAM_VERSION = "1.1.0"
 # ========= util =========
 
 def only_digits(s: str) -> str:
+    """Remove todos os caracteres não numéricos de uma string.
+
+    Args:
+        s: A string de entrada.
+
+    Returns:
+        A string contendo apenas dígitos.
+    """
     return re.sub(r"\D+", "", s or "")
 
 
 def validate_cnpj_digits(cnpj: str) -> bool:
+    """Valida os dígitos de um CNPJ.
+
+    Args:
+        cnpj: O CNPJ a ser validado, com ou sem formatação.
+
+    Returns:
+        True se o CNPJ for válido, False caso contrário.
+    """
     cnpj = only_digits(cnpj)
     if len(cnpj) != 14 or len(set(cnpj)) == 1:
         return False
@@ -63,6 +79,16 @@ def validate_cnpj_digits(cnpj: str) -> bool:
 
 @dataclass(frozen=True)
 class ApiConfig:
+    """Configurações da API para consulta de CNPJs.
+
+    Attributes:
+        endpoint: URL base da API.
+        api_key: Chave de API para autenticação.
+        auth_header: Nome do cabeçalho de autenticação.
+        auth_scheme: Esquema de autenticação (ex: "Bearer").
+        cnpj_param_name: Nome do parâmetro de CNPJ na URL.
+        timeout_sec: Timeout para as requisições.
+    """
     endpoint: str
     api_key: str = ""                 # vazio = sem auth (BrasilAPI)
     auth_header: str = "Authorization"
@@ -73,6 +99,18 @@ class ApiConfig:
 
 @dataclass(frozen=True)
 class RunConfig:
+    """Configurações de execução do script.
+
+    Attributes:
+        input_path: Caminho do arquivo de entrada com CNPJs.
+        baixados_out: Caminho do arquivo de saída para CNPJs baixados.
+        relatorio_out: Caminho do arquivo de relatório em CSV.
+        rate_per_sec: Taxa de requisições por segundo.
+        log_level: Nível de log (ex: "INFO", "DEBUG").
+        verbose: Se True, exibe logs detalhados por CNPJ.
+        input_encoding: Encoding do arquivo de entrada.
+        output_encoding: Encoding dos arquivos de saída.
+    """
     input_path: str
     baixados_out: str
     relatorio_out: str
@@ -85,6 +123,14 @@ class RunConfig:
 
 @dataclass(frozen=True)
 class StatusInfo:
+    """Informações de status de um CNPJ.
+
+    Attributes:
+        is_baixado: True se o CNPJ estiver baixado.
+        raw_status: Status bruto retornado pela API.
+        codigo: Código da situação cadastral.
+        descricao: Descrição da situação cadastral.
+    """
     is_baixado: bool
     raw_status: str
     codigo: Optional[str]
@@ -94,6 +140,11 @@ class StatusInfo:
 # ========= logging =========
 
 def setup_logging(level: str) -> None:
+    """Configura o logging do script.
+
+    Args:
+        level: O nível de log a ser utilizado.
+    """
     lvl = getattr(logging, level.upper(), logging.INFO)
     logging.basicConfig(
         level=lvl,
@@ -105,13 +156,19 @@ def setup_logging(level: str) -> None:
 # ========= http/api =========
 
 class FatalAuthError(Exception):
+    """Exceção para erros fatais de autenticação."""
     pass
 
 
 def build_headers(cfg: ApiConfig, base_url: str) -> Dict[str, str]:
-    """
-    Para BrasilAPI (sem auth), envia apenas Accept.
-    Se api_key estiver definida (ex.: APIBrasil), envia header de auth.
+    """Constrói os cabeçalhos para a requisição HTTP.
+
+    Args:
+        cfg: A configuração da API.
+        base_url: A URL base da API.
+
+    Returns:
+        Um dicionário com os cabeçalhos.
     """
     headers: Dict[str, str] = {"Accept": "application/json"}
     needs_auth = bool(cfg.api_key) and ("brasilapi.com.br" not in base_url)
@@ -123,9 +180,13 @@ def build_headers(cfg: ApiConfig, base_url: str) -> Dict[str, str]:
 
 
 def _looks_path_style(base: str) -> bool:
-    """
-    Heurística: se parece BrasilAPI (/cnpj/..., /v1, sem '?'),
-    tratamos como path-style.
+    """Verifica se a URL base parece ser do tipo "path-style".
+
+    Args:
+        base: A URL base da API.
+
+    Returns:
+        True se a URL parece ser "path-style", False caso contrário.
     """
     if "brasilapi.com.br" in base and "?" not in base:
         return True
@@ -133,12 +194,14 @@ def _looks_path_style(base: str) -> bool:
 
 
 def build_url(cfg: ApiConfig, cnpj: str) -> str:
-    """
-    Auto-detecta forma do endpoint:
-      - path-style (ex.: .../cnpj/v1/{cnpj}  ou  .../cnpj/v1)  → .../<cnpj>
-      - query-style (ex.: ...?cnpj=) → ...?cnpj=...
-      - placeholder-style (.../{cnpj}) → substitui {cnpj}
-    Se endpoint não vier, usa BrasilAPI por padrão.
+    """Constrói a URL completa para a consulta do CNPJ.
+
+    Args:
+        cfg: A configuração da API.
+        cnpj: O CNPJ a ser consultado.
+
+    Returns:
+        A URL completa para a consulta.
     """
     base = (cfg.endpoint or "").strip() or "https://brasilapi.com.br/api/cnpj/v1"
     # Adicionado re.IGNORECASE para suportar {cnpj}, {CNPJ}, etc.
@@ -151,6 +214,15 @@ def build_url(cfg: ApiConfig, cnpj: str) -> str:
 
 
 def new_session(pool_connections: int = 64, pool_maxsize: int = 64) -> requests.Session:
+    """Cria uma nova sessão de requisições HTTP.
+
+    Args:
+        pool_connections: O número de conexões no pool.
+        pool_maxsize: O tamanho máximo do pool.
+
+    Returns:
+        Uma nova sessão de requisições.
+    """
     s = requests.Session()
     adapter = HTTPAdapter(pool_connections=pool_connections, pool_maxsize=pool_maxsize, max_retries=0)
     s.mount("http://", adapter)
@@ -167,6 +239,19 @@ def safe_request(
     max_retries: int = 3,
     backoff: float = 1.5,
 ) -> Tuple[int, Optional[Dict[str, Any]], Optional[str]]:
+    """Realiza uma requisição HTTP com tratamento de erros e retentativas.
+
+    Args:
+        session: A sessão de requisições.
+        url: A URL para a requisição.
+        headers: Os cabeçalhos da requisição.
+        timeout: O timeout da requisição.
+        max_retries: O número máximo de retentativas.
+        backoff: O fator de backoff exponencial para retentativas.
+
+    Returns:
+        Uma tupla com o status HTTP, os dados da resposta e uma mensagem de erro.
+    """
     err: Optional[str] = None
     for attempt in range(1, max_retries + 1):
         try:
@@ -231,6 +316,15 @@ def safe_request(
 # ========= status decode =========
 
 def _deep_get(obj: Any, path: Sequence[str]) -> Optional[Any]:
+    """Acessa um valor aninhado em um dicionário.
+
+    Args:
+        obj: O dicionário.
+        path: Uma sequência de chaves para acessar o valor.
+
+    Returns:
+        O valor encontrado ou None.
+    """
     cur = obj
     for key in path:
         if not isinstance(cur, dict) or key not in cur:
@@ -240,6 +334,15 @@ def _deep_get(obj: Any, path: Sequence[str]) -> Optional[Any]:
 
 
 def _pick_first(payload: Dict[str, Any], *candidates: Sequence[str]) -> Optional[Any]:
+    """Retorna o primeiro valor encontrado de uma lista de caminhos possíveis.
+
+    Args:
+        payload: O dicionário de dados.
+        *candidates: Uma lista de caminhos (sequências de chaves).
+
+    Returns:
+        O primeiro valor encontrado ou None.
+    """
     for path in candidates:
         val = _deep_get(payload, path)
         if val is not None:
@@ -248,10 +351,13 @@ def _pick_first(payload: Dict[str, Any], *candidates: Sequence[str]) -> Optional
 
 
 def decode_status(payload: Dict[str, Any]) -> StatusInfo:
-    """
-    Prioriza códigos quando disponíveis:
-      01=ATIVA, 02=SUSPENSA, 03=INAPTA, 04=BAIXADA (convencional)
-    Depois cai para match textual conservador.
+    """Decodifica o status de um CNPJ a partir do payload da API.
+
+    Args:
+        payload: O payload de dados da API.
+
+    Returns:
+        Uma instância de StatusInfo com as informações de status.
     """
     codigo = _pick_first(
         payload,
@@ -298,6 +404,14 @@ def decode_status(payload: Dict[str, Any]) -> StatusInfo:
 
 
 def unwrap_payload(data: Any) -> Dict[str, Any]:
+    """Desembrulha o payload de dados da API, se necessário.
+
+    Args:
+        data: Os dados da resposta da API.
+
+    Returns:
+        O dicionário de dados do payload.
+    """
     if isinstance(data, dict):
         if isinstance(data.get("data"), dict):
             return data["data"]
@@ -309,11 +423,18 @@ def unwrap_payload(data: Any) -> Dict[str, Any]:
 # ========= pacing =========
 
 class Pacer:
+    """Controlador de ritmo para requisições."""
     __slots__ = ("target_gap", "_last_start")
     def __init__(self, rate_per_sec: float):
+        """Inicializa o Pacer.
+
+        Args:
+            rate_per_sec: A taxa de requisições por segundo.
+        """
         self.target_gap = 1.0 / max(rate_per_sec, 0.1)
         self._last_start = 0.0
     def wait(self) -> None:
+        """Aguarda o tempo necessário para manter a taxa de requisições."""
         now = time.perf_counter()
         if self._last_start <= 0.0:
             self._last_start = now
@@ -327,6 +448,15 @@ class Pacer:
 # ========= IO / fluxo principal =========
 
 def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str]]:
+    """Lê os CNPJs de um arquivo de texto.
+
+    Args:
+        path: O caminho para o arquivo de texto.
+        encoding: O encoding do arquivo.
+
+    Returns:
+        Uma tupla com a lista de CNPJs válidos e a lista de CNPJs inválidos.
+    """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Arquivo de entrada não encontrado: {path}")
     with open(path, "r", encoding=encoding) as f:
@@ -347,6 +477,18 @@ def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str]
 
 
 def row_dict(cnpj: str, status_label: str, info: Optional[StatusInfo], http_status: int, err: Optional[str]) -> Dict[str, Any]:
+    """Cria um dicionário de linha para o relatório CSV.
+
+    Args:
+        cnpj: O CNPJ.
+        status_label: O rótulo do status.
+        info: As informações de status do CNPJ.
+        http_status: O status HTTP da requisição.
+        err: A mensagem de erro, se houver.
+
+    Returns:
+        Um dicionário representando a linha do relatório.
+    """
     return {
         "cnpj": cnpj,
         "status": status_label,
@@ -359,6 +501,11 @@ def row_dict(cnpj: str, status_label: str, info: Optional[StatusInfo], http_stat
 
 
 def parse_env_api_config() -> ApiConfig:
+    """Analisa as variáveis de ambiente para configurar a API.
+
+    Returns:
+        Uma instância de ApiConfig com as configurações da API.
+    """
     return ApiConfig(
         endpoint=os.getenv("API_BR_ENDPOINT", os.getenv("API_BRASIL_ENDPOINT", "")).strip(),
         api_key=os.getenv("API_BR_API_KEY", os.getenv("API_BRASIL_API_KEY", "")).strip(),
@@ -370,6 +517,15 @@ def parse_env_api_config() -> ApiConfig:
 
 
 def parse_args(argv: Optional[Sequence[str]] = None) -> Tuple[RunConfig, ApiConfig, bool]:
+    """Analisa os argumentos da linha de comando.
+
+    Args:
+        argv: Uma sequência de argumentos da linha de comando.
+
+    Returns:
+        Uma tupla com a configuração de execução, a configuração da API e um booleano
+        indicando se apenas a versão foi solicitada.
+    """
     p = argparse.ArgumentParser(
         prog=PROGRAM_NAME,
         description=f"{PROGRAM_NAME} {PROGRAM_VERSION} — Verifica CNPJs (BrasilAPI por padrão) e gera relatórios."
@@ -427,6 +583,14 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> Tuple[RunConfig, ApiConf
 # ========= main =========
 
 def main(argv: Optional[Sequence[str]] = None) -> int:
+    """Função principal do script.
+
+    Args:
+        argv: Uma sequência de argumentos da linha de comando.
+
+    Returns:
+        O código de saída do script.
+    """
     run_cfg, api_cfg, just_version = parse_args(argv)
     if just_version:
         return 0
