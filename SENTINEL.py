@@ -124,14 +124,10 @@ def build_headers(cfg: ApiConfig, base_url: str) -> Dict[str, str]:
 
 def _looks_path_style(base: str) -> bool:
     """
-    Heurística: se houver placeholder {cnpj} OU se parece BrasilAPI (/cnpj/..., /v1, sem '?'),
+    Heurística: se parece BrasilAPI (/cnpj/..., /v1, sem '?'),
     tratamos como path-style.
     """
-    if "{cnpj}" in base.lower():
-        return True
     if "brasilapi.com.br" in base and "?" not in base:
-        return True
-    if "/cnpj" in base and "?" not in base:
         return True
     return False
 
@@ -145,8 +141,9 @@ def build_url(cfg: ApiConfig, cnpj: str) -> str:
     Se endpoint não vier, usa BrasilAPI por padrão.
     """
     base = (cfg.endpoint or "").strip() or "https://brasilapi.com.br/api/cnpj/v1"
-    if "{cnpj}" in base:
-        return base.replace("{cnpj}", cnpj)
+    # Adicionado re.IGNORECASE para suportar {cnpj}, {CNPJ}, etc.
+    if re.search(r"\{cnpj\}", base, re.IGNORECASE):
+        return re.sub(r"\{cnpj\}", cnpj, base, flags=re.IGNORECASE)
     if _looks_path_style(base):
         return f"{base.rstrip('/')}/{cnpj}"
     sep = "&" if "?" in base else "?"
