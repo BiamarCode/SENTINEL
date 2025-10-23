@@ -377,13 +377,21 @@ def decode_status(payload: Dict[str, Any]) -> StatusInfo:
     )
 
     raw_candidates: List[str] = []
+    if codigo is not None:
+        raw_candidates.append(str(codigo))
+    if descricao is not None:
+        raw_candidates.append(str(descricao))
+
     for base in ((), ("estabelecimento",), ("empresa",), ("dados",)):
         for k in ("situacao", "status", "situacao_cadastral", "descricao_situacao_cadastral"):
             path = (*base, k)
             v = _deep_get(payload, path)
             if v is not None:
-                raw_candidates.append(str(v))
-    raw_status = " | ".join(x for x in raw_candidates if x).strip() or (str(descricao) if descricao else "<indefinido>")
+                s_v = str(v)
+                if s_v not in raw_candidates:
+                    raw_candidates.append(s_v)
+
+    raw_status = " | ".join(x for x in raw_candidates if x).strip() or "<indefinido>"
 
     is_baixado = False
     if codigo is not None:
