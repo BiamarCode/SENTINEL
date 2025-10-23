@@ -14,42 +14,66 @@ from SENTINEL import (
 )
 
 def test_build_url_case_insensitive_placeholder():
-    """Testa a construção de URL com placeholder case-insensitive."""
+    """Testa a construção de URL com placeholder case-insensitive.
+
+    Verifica se a função `build_url` substitui corretamente placeholders
+    como {CNPJ} (maiúsculo) na URL.
+    """
     cfg = ApiConfig(endpoint="https://example.com/api/{CNPJ}")
     cnpj = "12345678901234"
     expected_url = "https://example.com/api/12345678901234"
     assert build_url(cfg, cnpj) == expected_url
 
 def test_build_url_path_style():
-    """Testa a construção de URL no estilo 'path-style'."""
+    """Testa a construção de URL no estilo 'path-style'.
+
+    Garante que para endpoints como o da BrasilAPI, o CNPJ é anexado
+    corretamente ao caminho da URL.
+    """
     cfg = ApiConfig(endpoint="https://brasilapi.com.br/api/cnpj/v1")
     cnpj = "12345678901234"
     expected_url = "https://brasilapi.com.br/api/cnpj/v1/12345678901234"
     assert build_url(cfg, cnpj) == expected_url
 
 def test_build_url_query_style():
-    """Testa a construção de URL no estilo 'query-style'."""
+    """Testa a construção de URL no estilo 'query-style'.
+
+    Verifica se o CNPJ é adicionado como um parâmetro de query
+    quando especificado na configuração.
+    """
     cfg = ApiConfig(endpoint="https://api.example.com/cnpj", cnpj_param_name="numero")
     cnpj = "12345678901234"
     expected_url = "https://api.example.com/cnpj?numero=12345678901234"
     assert build_url(cfg, cnpj) == expected_url
 
 def test_build_url_default_brasilapi():
-    """Testa a construção de URL padrão para a BrasilAPI."""
+    """Testa a construção de URL padrão para a BrasilAPI.
+
+    Assegura que, se nenhum endpoint for fornecido, a URL da BrasilAPI
+    é usada como padrão.
+    """
     cfg = ApiConfig(endpoint="")
     cnpj = "12345678901234"
     expected_url = "https://brasilapi.com.br/api/cnpj/v1/12345678901234"
     assert build_url(cfg, cnpj) == expected_url
 
 def test_build_url_with_existing_query_params():
-    """Testa a construção de URL com parâmetros de query existentes."""
+    """Testa a construção de URL com parâmetros de query existentes.
+
+    Garante que o parâmetro do CNPJ é anexado corretamente a uma URL
+    que já contém outros parâmetros de query.
+    """
     cfg = ApiConfig(endpoint="https://api.example.com/cnpj?source=test")
     cnpj = "12345678901234"
     expected_url = "https://api.example.com/cnpj?source=test&cnpj=12345678901234"
     assert build_url(cfg, cnpj) == expected_url
 
 def test_read_cnpjs_normalized_duplicate_not_invalid():
-    """Testa que um CNPJ normalizado que é um duplicado não é marcado como inválido."""
+    """Testa que um CNPJ normalizado que é um duplicado não é marcado como inválido.
+
+    Este teste previne uma regressão onde uma linha contendo um CNPJ já visto
+    (em formato diferente) era incorretamente marcada como inválida.
+    """
     # CNPJ válido, um completo e outro abreviado que será normalizado para o mesmo.
     # O bug atual faz com que a linha "33.000.167/0001-01" seja considerada inválida.
     lines = ["33000167000101", "33.000.167/0001-01"]
@@ -80,11 +104,19 @@ def test_read_cnpjs_normalized_duplicate_not_invalid():
     ("", False),
 ])
 def test_validate_cnpj_digits(cnpj, expected):
-    """Testa a validação de CNPJ com diferentes formatos e casos de borda."""
+    """Testa a validação de CNPJ com diferentes formatos e casos de borda.
+
+    Cobre CNPJs válidos, inválidos, curtos, com todos os dígitos iguais
+    e entradas nulas ou vazias.
+    """
     assert validate_cnpj_digits(cnpj) == expected
 
 def test_read_cnpjs_empty_file():
-    """Testa o comportamento de read_cnpjs com um arquivo de entrada vazio."""
+    """Testa o comportamento de read_cnpjs com um arquivo de entrada vazio.
+
+    Garante que a função retorna listas vazias e contagem zero ao processar
+    um arquivo sem conteúdo.
+    """
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
         tmp_path = tmp.name
 
@@ -107,14 +139,23 @@ def test_read_cnpjs_empty_file():
     ({"status": "ATIVA", "dados": {"situacao": "BAIXA DEFINITIVA"}}, True, "BAIXA DEFINITIVA"),
 ])
 def test_decode_status(payload, expected_is_baixado, expected_raw_status_part):
-    """Testa a decodificação de status com vários formatos de payload."""
+    """Testa a decodificação de status com vários formatos de payload da API.
+
+    Verifica se a função `decode_status` identifica corretamente o status "baixado"
+    e extrai as informações de status de diferentes estruturas de resposta.
+    """
     status_info = decode_status(payload)
     assert status_info.is_baixado == expected_is_baixado
     assert expected_raw_status_part in status_info.raw_status
 
 @patch('SENTINEL.safe_request')
 def test_main_integration(mock_safe_request):
-    """Testa o fluxo principal de ponta a ponta com mocks."""
+    """Testa o fluxo principal da aplicação de ponta a ponta com mocks.
+
+    Simula a execução do script com arquivos de entrada e saída temporários,
+    mockando as requisições à API para verificar se os relatórios são gerados
+    corretamente.
+    """
 
     def mock_request_side_effect(session, url, headers, timeout):
         if "33000167000101" in url:
@@ -164,7 +205,11 @@ def test_main_integration(mock_safe_request):
         assert rows[2]["http_status"] == "404"
 
 def test_read_cnpjs_all_invalid():
-    """Testa o comportamento de read_cnpjs com um arquivo contendo apenas CNPJs inválidos."""
+    """Testa o comportamento de read_cnpjs com um arquivo contendo apenas CNPJs inválidos.
+
+    Verifica se a função identifica corretamente todas as linhas como inválidas
+    e não retorna nenhum CNPJ válido.
+    """
     invalid_lines = ["123", "abc", "11.111.111/1111-11"]
     with tempfile.NamedTemporaryFile("w", delete=False, encoding="utf-8") as tmp:
         for line in invalid_lines:
