@@ -447,15 +447,18 @@ class Pacer:
 
 # ========= IO / fluxo principal =========
 
-def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str]]:
-    """Lê os CNPJs de um arquivo de texto.
+def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str], int]:
+    """Lê, normaliza e valida CNPJs de um arquivo de texto.
 
     Args:
         path: O caminho para o arquivo de texto.
         encoding: O encoding do arquivo.
 
     Returns:
-        Uma tupla com a lista de CNPJs válidos e a lista de CNPJs inválidos.
+        Uma tupla com:
+        - A lista de CNPJs válidos (deduplicados e na ordem de aparição).
+        - A lista de entradas inválidas (não foram validadas).
+        - A contagem de CNPJs que foram normalizados com zeros à esquerda.
     """
     if not os.path.exists(path):
         raise FileNotFoundError(f"Arquivo de entrada não encontrado: {path}")
@@ -465,15 +468,30 @@ def read_cnpjs(path: str, encoding: str = "utf-8") -> Tuple[List[str], List[str]
     seen: set[str] = set()
     cnpjs: List[str] = []
     invalids: List[str] = []
+    normalized_count = 0
     for line in raw_lines:
         c = only_digits(line)
-        if validate_cnpj_digits(c):
-            if c not in seen:
-                seen.add(c)
-                cnpjs.append(c)
+
+        is_short = 1 <= len(c) < 14
+        was_normalized = False
+
+        if is_short:
+            c_filled = c.zfill(14)
+            if validate_cnpj_digits(c_filled):
+                c = c_filled
+                was_normalized = True
+
+        if c not in seen and validate_cnpj_digits(c):
+            seen.add(c)
+            cnpjs.append(c)
+            if was_normalized:
+                normalized_count += 1
         else:
-            invalids.append(line)
-    return cnpjs, invalids
+            # Garante que a linha original seja adicionada aos inválidos
+            # se a versão normalizada falhar ou se já for inválida.
+            if line not in invalids:
+                 invalids.append(line)
+    return cnpjs, invalids, normalized_count
 
 
 def row_dict(cnpj: str, status_label: str, info: Optional[StatusInfo], http_status: int, err: Optional[str]) -> Dict[str, Any]:
@@ -606,7 +624,9 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     signal.signal(signal.SIGTERM, _handle_sig)
 
     try:
-        cnpjs, invalids = read_cnpjs(run_cfg.input_path, encoding=run_cfg.input_encoding)
+        cnpjs, invalids, normalized_count = read_cnpjs(run_cfg.input_path, encoding=run_cfg.input_encoding)
+        if normalized_count > 0:
+            logging.info("Normalizados com zeros à esquerda: %d", normalized_count)
     except FileNotFoundError as e:
         logging.error(str(e))
         return 2
