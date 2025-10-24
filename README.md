@@ -18,7 +18,7 @@ A ferramenta utiliza a [BrasilAPI](https://brasilapi.com.br/) como fonte de dado
 
 1.  **Clone o repositório:**
     ```bash
-    git clone https://github.com/seu-usuario/sentinel.git
+    git clone https://github.com/BiamarCode/sentinel.git
     cd sentinel
     ```
 
